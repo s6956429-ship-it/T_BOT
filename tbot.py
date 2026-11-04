@@ -2,8 +2,9 @@ import time
 import os
 import re
 import psycopg2
-from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CallbackQueryHandler, filters
+
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
@@ -196,13 +197,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # --- دستور بغل ---
-    if re.match(r"^بغل\b", text):
-        await handle_custom_interaction("بغل", "last_kiss2_time", 500, "{user}, {target} را بغل کرد و نفری {reward} دلار گرفتن. 🫂✨")
+    if re.match(r"^گی\b", text):
+        await handle_custom_interaction("گی", "last_kiss2_time", 500, "{user} کون {target} گذاشت و آبشو ریخت توش و نفری {reward} دلار گرفتن. 🍑💦")
         return
 
     # --- دستور بوس۳ ---
-    if re.match(r"^بوس۳\b", text):
-        await handle_custom_interaction("بوس۳", "last_kiss3_time", 1000, "{user} به {target} کادو داد و نفری {reward} دلار به جیب زدن! 🎁💰")
+    if re.match(r"^لز\b", text):
+        await handle_custom_interaction("لز", "last_kiss3_time", 500, "{user} و {target} قیچی کردن و نفری {reward} دلار گرفتن. 🐳")
         return
 
     # --- سیستم خرید املاک و بیزینس ---
@@ -504,8 +505,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         spouse_score = spouse_data[0] if spouse_data else 0
         spouse_name = spouse_data[1] if spouse_data else "همسر"
         
-        new_user_score = score + 100
-        new_spouse_score = spouse_score + 100
+        new_user_score = score + 1000
+        new_spouse_score = spouse_score + 1000
         
         cursor.execute("UPDATE users SET score = %s, last_sex_time = %s WHERE user_id = %s", (new_user_score, current_time, user_id))
         cursor.execute("UPDATE users SET score = %s, last_sex_time = %s WHERE user_id = %s", (new_spouse_score, current_time, spouse_id))
@@ -516,7 +517,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_display = f"@{user.username}" if user.username else user.first_name
         spouse_display = f"@{spouse_name}" if not spouse_name.startswith("http") and not spouse_name == "Unknown" else spouse_name
         
-        await update.message.reply_text(f"{user_display} و {spouse_display} شب خوبی رو با هم گذروندن و هر کدوم ۱۰۰ دلار گرفتن! 😏🔥")
+        await update.message.reply_text(f"{user_display} و {spouse_display} شب خوبی رو با هم گذروندن و هر کدوم ۱۰۰۰ دلار گرفتن! 😏🔥")
         return
 
     # --- سیستم امتیازدهی میو ---
