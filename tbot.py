@@ -534,7 +534,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(reply_text)
 
     # --- دستور املاک (مشاهده دارایی‌ها و سود جمع شده) ---
-    if re.match(r"^املاک\b", text):
+    # --- دستور املاک (باید بالاترین قسمت handle_message باشد) ---
+    if "املاک" in text:
         conn = get_db_connection()
         if not conn:
             await update.message.reply_text("خطا در اتصال به دیتابیس!")
@@ -543,7 +544,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         ensure_user(cursor, user_id, username)
         
-        # ۱. محاسبه سود لحظه‌ای تمام املاک کاربر
+        # ۱. خواندن املاک کاربر از دیتابیس
         cursor.execute("SELECT property_id, quantity, last_collect_time FROM user_properties WHERE user_id = %s", (user_id,))
         properties = cursor.fetchall()
         
@@ -570,23 +571,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             conn.commit()
 
         cursor.execute("SELECT business_balance FROM users WHERE user_id = %s", (user_id,))
-        business_balance = cursor.fetchone()[0]
+        res = cursor.fetchone()
+        business_balance = res[0] if res else 0
         
         cursor.close()
         conn.close()
         
-        # --- بررسی اینکه آیا ملکی دارد یا خیر ---
+        # ۲. اگر ملکی نداشت
         if not properties:
             await update.message.reply_text(
                 "🏢 **املاک و مستغلات شما:**\n\n"
                 "❌ شما هنوز هیچ ملکی نخریدی!\n"
-                "🏪 می‌تونی با دستور زیر اولین سوپرمارکتت رو بخوای:\n"
+                "🏪 می‌تونی با دستور زیر اولین سوپرمارکتت رو بخری:\n"
                 "`خرید سوپرمارکت`",
                 parse_mode="Markdown"
             )
             return
 
-        # اگر ملک داشت، لیست رو بساز و با دکمه بفرست
+        # ۳. اگر ملک داشت، لیست رو بساز
         property_list_text = ""
         for prop_id, qty, _ in properties:
             if prop_id in PROPERTIES_CONFIG:
@@ -605,6 +607,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await update.message.reply_text(response_msg, reply_markup=reply_markup, parse_mode="Markdown")
         return
+
 
 # --- تابع مدیریت کلیک روی دکمه شیشه‌ای (برداشت سود) ---
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
