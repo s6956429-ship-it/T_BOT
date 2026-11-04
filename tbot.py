@@ -57,7 +57,7 @@ PROPERTIES_CONFIG = {
     #     "profit_per_sec": 2.0,
     # }
 }
-# جدول ثبت املاک خریداری شده با قابلیت داشتن تعداد (تا ۹ عدد)
+    # جدول ثبت املاک خریداری شده با قابلیت داشتن تعداد (تا ۹ عدد)
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS user_properties (
@@ -70,16 +70,12 @@ PROPERTIES_CONFIG = {
         )
     """
     )
-        # اضافه شدن کیف پول بیزینس به جدول کاربران (اگر وجود نداشت)
-    try:
-        cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS business_balance DOUBLE PRECISION DEFAULT 0;")
-    except Exception:
-        pass
     # اگر جدول از قبل بود ولی ستون quantity رو نداشت، اضافه‌اش کن:
     try:
         cursor.execute("ALTER TABLE user_properties ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1;")
     except Exception:
         pass
+
         
         # --- بخش پنجم: سیستم خرید املاک و بیزینس (با قابلیت خرید چندتایی تا ۹ عدد) ---
     matched_property = None
