@@ -41,6 +41,115 @@ def init_db():
     """
     )
     
+    # --- تنظیمات املاک و بیزینس‌ها (از اینجا می‌تونی در آینده املاک جدید اضافه کنی) ---
+PROPERTIES_CONFIG = {
+    "supermarket": {
+        "name": "سوپرمارکت",
+        "command": "خرید سوپرمارکت",
+        "price": 200000,
+        "profit_per_sec": 0.5, # ثانیه‌ای نیم دلار سود
+    },
+    # در آینده برای اضافه کردن ملک جدید، کافیه کپی کنی و اسم و مقادیرش رو عوض کنی:
+    # "gas_station": {
+    #     "name": "پمپ بنزین",
+    #     "command": "خرید پمپ بنزین",
+    #     "price": 1000000,
+    #     "profit_per_sec": 2.0,
+    # }
+}
+# جدول ثبت املاک خریداری شده با قابلیت داشتن تعداد (تا ۹ عدد)
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_properties (
+            user_id BIGINT,
+            property_id TEXT,
+            quantity INTEGER DEFAULT 1,
+            purchase_time DOUBLE PRECISION,
+            last_collect_time DOUBLE PRECISION,
+            PRIMARY KEY (user_id, property_id)
+        )
+    """
+    )
+    # اگر جدول از قبل بود ولی ستون quantity رو نداشت، اضافه‌اش کن:
+    try:
+        cursor.execute("ALTER TABLE user_properties ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1;")
+    except Exception:
+        pass
+        
+        # --- بخش پنجم: سیستم خرید املاک و بیزینس (با قابلیت خرید چندتایی تا ۹ عدد) ---
+    matched_property = None
+    for prop_id, prop_data in PROPERTIES_CONFIG.items():
+        if text == prop_data["command"].lower():
+            matched_property = (prop_id, prop_data)
+            break
+
+    if matched_property:
+        prop_id, prop_data = matched_property
+        conn = get_db_connection()
+        if not conn:
+            await update.message.reply_text("خطا در اتصال به دیتابیس!")
+            return
+        cursor = conn.cursor()
+        
+        ensure_user(cursor, user_id, username)
+        
+        # چک کردن تعداد فعلی که کاربر از این ملک داره
+        cursor.execute("SELECT quantity FROM user_properties WHERE user_id = %s AND property_id = %s", (user_id, prop_id))
+        row = cursor.fetchone()
+        current_qty = row[0] if row else 0
+        
+        # بررسی سقف ۹ عددی
+        if current_qty >= 9:
+            await update.message.reply_text(f"شما حداکثر می‌تونی ۹ تا {prop_data['name']} داشته باشی و به سقف مجاز رسیدی! 🚫")
+            cursor.close()
+            conn.close()
+            return
+            
+        # چک کردن موجودی اصلی کاربر
+        cursor.execute("SELECT score FROM users WHERE user_id = %s", (user_id,))
+        user_score = cursor.fetchone()[0]
+        
+        if user_score < prop_data["price"]:
+            await update.message.reply_text(f"موجودی حسابت کافی نیست! برای خرید یک {prop_data['name']} به {prop_data['price']} دلار نیاز داری. ❌", parse_mode="Markdown")
+            cursor.close()
+            conn.close()
+            return
+            
+        # کسر قیمت ملک از موجودی و ثبت/آپدیت تعداد در دیتابیس
+        current_time = time.time()
+        new_score = user_score - prop_data["price"]
+        
+        cursor.execute("UPDATE users SET score = %s WHERE user_id = %s", (new_score, user_id))
+        
+        if current_qty == 0:
+            # اگر اولین بار بود می‌خرید
+            cursor.execute(
+                "INSERT INTO user_properties (user_id, property_id, quantity, purchase_time, last_collect_time) VALUES (%s, %s, 1, %s, %s)",
+                (user_id, prop_id, current_time, current_time)
+            )
+            new_qty = 1
+        else:
+            # اگر از قبل داشت، یکی به تعدادش اضافه کن
+            new_qty = current_qty + 1
+            cursor.execute(
+                "UPDATE user_properties SET quantity = %s WHERE user_id = %s AND property_id = %s",
+                (new_qty, user_id, prop_id)
+            )
+            
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        total_profit_per_sec = prop_data["profit_per_sec"] * new_qty
+        await update.message.reply_text(
+            f"🎉 مبارکه!\n{user.first_name} عزیز، یک {prop_data['name']} دیگر خریدی!\n\n"
+            f"📊 تعداد کل این ملک: {new_qty} از ۹\n"
+            f"📈 سود جدید این بیزینس: ثانیه‌ای {total_profit_per_sec} دلار 🏪", 
+            parse_mode="Markdown"
+        )
+        return
+        
+    
     # سیستم مهاجرت هوشمند برای اضافه کردن ستون‌های جدید بدون پاک شدن داده‌ها
     cursor.execute("PRAGMA table_info(users);" if "sqlite" in DATABASE_URL else """
         SELECT column_name FROM information_schema.columns WHERE table_name='users';
