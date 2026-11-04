@@ -1,9 +1,10 @@
 import time
 import sqlite3
+import re
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 
-# ۱. راه‌اندازی دیتابیس (اضافه شدن ستون last_sex_time برای محدودیت ۱ ساعته رابطه)
+# ۱. راه‌اندازی دیتابیس
 def init_db():
     conn = sqlite3.connect("scores.db")
     cursor = conn.cursor()
@@ -63,13 +64,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
 
+    # تمیز کردن متن (حذف فاصله‌های اضافه اطراف متن و تبدیل به حروف کوچک)
     text = update.message.text.strip().lower()
     user = update.effective_user
     user_id = user.id
     username = user.username or user.first_name or "Unknown"
 
-    # --- بخش اول: ازدواج ---
-    if "ازدواج" in text:
+    # --- بخش اول: ازدواج (باید ابتدای جمله باشد) ---
+    if re.match(r"^ازدواج\b", text):
         if not update.message.reply_to_message:
             await update.message.reply_text("برای ازدواج باید روی پیام طرف مقابل ریپلای کنی و بنویسی ازدواج! 💍")
             return
@@ -115,8 +117,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"مبارکه! 💖\n{user.first_name} و {target_user.first_name} با هم ازدواج کردن!")
         return
 
-    # --- بخش دوم: طلاق ---
-    if "طلاق" in text:
+    # --- بخش دوم: طلاق (باید ابتدای جمله باشد) ---
+    if re.match(r"^طلاق\b", text):
         conn = sqlite3.connect("scores.db")
         cursor = conn.cursor()
         
@@ -144,8 +146,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"طلاق صادر شد! 💔\n۲۰۰ دلار بابت مهریه از حسابت کم شد.\nموجودی جدید: {new_score} امتیاز")
         return
 
-    # --- بخش سوم: دستور سکس / رابطه (محدودیت ۱ ساعته + پاداش ۱۰۰ دلاری به هر دو) ---
-    if "سکس" in text or "رابطه" in text:
+    # --- بخش سوم: دستور سکس / رابطه (باید ابتدای جمله باشد) ---
+    if re.match(r"^(سکس|رابطه)\b", text):
         conn = sqlite3.connect("scores.db")
         cursor = conn.cursor()
         
@@ -159,7 +161,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
             
         current_time = time.time()
-        cooldown_sex = 3600  # ۱ ساعت به ثانیه (۶۰ * ۶۰)
+        cooldown_sex = 3600  # ۱ ساعت به ثانیه
         time_diff = current_time - last_sex_time
         
         if time_diff < cooldown_sex:
@@ -168,13 +170,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             conn.close()
             return
             
-        # گرفتن اطلاعات همسر برای دادن امتیاز به هر دو
         cursor.execute("SELECT score, username FROM users WHERE user_id = ?", (spouse_id,))
         spouse_data = cursor.fetchone()
         spouse_score = spouse_data[0] if spouse_data else 0
         spouse_name = spouse_data[1] if spouse_data else "همسر"
         
-        # آپدیت امتیاز کاربر و همسرش (هرکدام +100) و ثبت زمان جدید
         new_user_score = score + 1000
         new_spouse_score = spouse_score + 1000
         
@@ -183,18 +183,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.commit()
         conn.close()
         
-        # نمایش نام/آیدی دو طرف در پیام خروجی
         user_display = f"@{user.username}" if user.username else user.first_name
         spouse_display = f"@{spouse_name}" if not spouse_name.startswith("http") and not spouse_name == "Unknown" else spouse_name
         
         await update.message.reply_text(f"{user_display} و {spouse_display} شب خوبی رو با هم گذروندن و هر کدوم ۱۰۰۰ دلار گرفتن! 😏🔥")
         return
 
-    # --- بخش چهارم: سیستم امتیازدهی میو ---
-    trigger_words = ["میو", "میو میو", "میاو"]
-    is_matched = any(word in text for word in trigger_words)
-
-    if is_matched:
+    # --- بخش چهارم: سیستم امتیازدهی میو (فقط ابتدای جمله و پشتیبانی از کشیده شدن حروف مثل میووو) ---
+    # این الگو چک میکند که متن دقیقاً از "میو"، "میو میو" یا "میاو" (با امکان تکرار حروف صداست مثل میوووو) شروع شود
+    meow_pattern = r"^(میوو*|میاوو*|میو\s+میو)"
+    
+    if re.match(meow_pattern, text):
         success, total_score, remaining = check_and_update_score(user_id, username, points=10, cooldown=60)
 
         if success:
@@ -217,7 +216,7 @@ def main():
         MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message)
     )
 
-    print("بات پیشرفته (میو + ازدواج + طلاق + رابطه) با موفقیت روشن شد...")
+    print("بات پیشرفته با فیلتر دقیق کلمات در ابتدای جمله روشن شد...")
     app.run_polling()
 
 if __name__ == "__main__":
