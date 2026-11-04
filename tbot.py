@@ -543,7 +543,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         ensure_user(cursor, user_id, username)
         
-        # ۱. محاسبه سود لحظه‌ای تمام املاک کاربر و اضافه کردن به business_balance
+        # ۱. محاسبه سود لحظه‌ای تمام املاک کاربر
         cursor.execute("SELECT property_id, quantity, last_collect_time FROM user_properties WHERE user_id = %s", (user_id,))
         properties = cursor.fetchall()
         
@@ -553,18 +553,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for prop_id, qty, last_collect in properties:
             if prop_id in PROPERTIES_CONFIG:
                 prop_data = PROPERTIES_CONFIG[prop_id]
-                # محاسبه سود بر اساس زمان گذشته (تعداد * سود ثانیه‌ای * ثانیه‌های سپری شده)
                 time_diff = current_time - last_collect
                 profit = time_diff * prop_data["profit_per_sec"] * qty
                 total_pending_profit += profit
                 
-                # آپدیت زمان آخرین محاسبه در دیتابیس
                 cursor.execute(
                     "UPDATE user_properties SET last_collect_time = %s WHERE user_id = %s AND property_id = %s",
                     (current_time, user_id, prop_id)
                 )
         
-        # اگر سودی جمع شده بود، به موجودی کیف پول بیزینس اضافه کن
         if total_pending_profit > 0:
             cursor.execute(
                 "UPDATE users SET business_balance = business_balance + %s WHERE user_id = %s",
@@ -572,22 +569,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             conn.commit()
 
-        # ۲. خواندن اطلاعات نهایی از دیتابیس برای نمایش به کاربر
         cursor.execute("SELECT business_balance FROM users WHERE user_id = %s", (user_id,))
         business_balance = cursor.fetchone()[0]
         
-        # ساخت لیست املاک کاربر
+        cursor.close()
+        conn.close()
+        
+        # --- بررسی اینکه آیا ملکی دارد یا خیر ---
+        if not properties:
+            await update.message.reply_text(
+                "🏢 **املاک و مستغلات شما:**\n\n"
+                "❌ شما هنوز هیچ ملکی نخریدی!\n"
+                "🏪 می‌تونی با دستور زیر اولین سوپرمارکتت رو بخوای:\n"
+                "`خرید سوپرمارکت`",
+                parse_mode="Markdown"
+            )
+            return
+
+        # اگر ملک داشت، لیست رو بساز و با دکمه بفرست
         property_list_text = ""
         for prop_id, qty, _ in properties:
             if prop_id in PROPERTIES_CONFIG:
                 prop_data = PROPERTIES_CONFIG[prop_id]
                 property_list_text += f"▪️ {prop_data['name']} : **{qty} عدد**\n"
-                
-        cursor.close()
-        conn.close()
-        
-        if not properties:
-            property_list_text = "هنوز هیچ ملکی نخریدی! با دستورهایی مثل «خرید سوپرمارکت» شروع کن. 🏪\n"
 
         response_msg = (
             f"🏢 **املاک و مستغلات شما:**\n\n"
@@ -596,12 +600,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"برای انتقال این سود به حساب اصلی، روی دکمه زیر بزنید 👇"
         )
         
-        # ساخت دکمه شیشه‌ای برای برداشت سود
         keyboard = [[InlineKeyboardButton("💵 برداشت سود به حساب اصلی", callback_data="collect_profit")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await update.message.reply_text(response_msg, reply_markup=reply_markup, parse_mode="Markdown")
         return
+
 # --- تابع مدیریت کلیک روی دکمه شیشه‌ای (برداشت سود) ---
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
