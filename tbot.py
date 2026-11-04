@@ -1,9 +1,9 @@
+import time
 import sqlite3
-import os
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 
-# ۱. راه‌اندازی یا اتصال به پایگاه داده دیتابیس برای ذخیره امتیازها
+# ۱. راه‌اندازی دیتابیس (اضافه شدن ستون last_action_time برای ذخیره زمان آخرین امتیاز)
 def init_db():
     conn = sqlite3.connect("scores.db")
     cursor = conn.cursor()
@@ -12,55 +12,78 @@ def init_db():
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
             username TEXT,
-            score INTEGER DEFAULT 0
+            score INTEGER DEFAULT 0,
+            last_action_time REAL DEFAULT 0
         )
     """
     )
     conn.commit()
     conn.close()
 
-# تابع برای اضافه کردن امتیاز و گرفتن مجموع امتیاز جدید کاربر
-def add_score(user_id, username, points=10):
+# تابع بررسی محدودیت زمانی (Cooldown) و اضافه کردن امتیاز
+def check_and_update_score(user_id, username, points=10, cooldown=60):
     conn = sqlite3.connect("scores.db")
     cursor = conn.cursor()
+    
+    current_time = time.time() # زمان حال بر حسب ثانیه
 
-    cursor.execute("SELECT score FROM users WHERE user_id = ?", (user_id,))
+    # گرفتن امتیاز و آخرین زمان فعالیت کاربر
+    cursor.execute("SELECT score, last_action_time FROM users WHERE user_id = ?", (user_id,))
     result = cursor.fetchone()
 
     if result is None:
+        # کاربر جدید است؛ امتیاز رو می‌دیم و زمان رو ثبت می‌کنیم
         new_score = points
         cursor.execute(
-            "INSERT INTO users (user_id, username, score) VALUES (?, ?, ?)",
-            (user_id, username, new_score),
+            "INSERT INTO users (user_id, username, score, last_action_time) VALUES (?, ?, ?, ?)",
+            (user_id, username, new_score, current_time),
         )
+        conn.commit()
+        conn.close()
+        return True, new_score, 0
     else:
-        new_score = result[0] + points
-        cursor.execute(
-            "UPDATE users SET score = ? WHERE user_id = ?",
-            (new_score, user_id),
-        )
+        score, last_action_time = result
+        time_diff = current_time - last_action_time
 
-    conn.commit()
-    conn.close()
-    return new_score
+        # اگر هنوز ۱ دقیقه (۶۰ ثانیه) نگذشته باشد
+        if time_diff < cooldown:
+            remaining_time = int(cooldown - time_diff)
+            conn.close()
+            return False, score, remaining_time
+        else:
+            # زمان مقرر گذشته است؛ امتیاز اضافه میشه و زمان آپدیت میشه
+            new_score = score + points
+            cursor.execute(
+                "UPDATE users SET score = ?, last_action_time = ? WHERE user_id = ?",
+                (new_score, current_time, user_id),
+            )
+            conn.commit()
+            conn.close()
+            return True, new_score, 0
 
-# ۲. تابع مدیریت پیام‌ها (چک کردن کلمات حساس)
+# ۲. مدیریت پیام‌ها
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
 
     text = update.message.text.strip().lower()
-    trigger_words = ["میو", "میو میو", "میاو"]
+    trigger_words = ["میو", "میو میو", "میاو","معو"]
     is_matched = any(word in text for word in trigger_words)
 
     if is_matched:
         user = update.effective_user
         user_id = user.id
-        # اصلاح شده تا خطایی رخ ندهد
         username = user.username or user.first_name or "Unknown"
 
-        total_score = add_score(user_id, username, points=10)
-        reply_text = f"۱۰ امتیاز گرفتی!\nجمع امتیازات: {total_score}"
+        # صدا زدن تابع بررسی و ثبت امتیاز (با محدودیت ۶۰ ثانیه)
+        success, total_score, remaining = check_and_update_score(user_id, username, points=10, cooldown=60)
+
+        if success:
+            # اگر محدودیت تمام شده بود و امتیاز گرفت
+            reply_text = f"۱۰ امتیاز گرفتی!\nجمع امتیازات: {total_score}"
+        else:
+            # اگر هنوز توی محدودیت زمانی بود
+            reply_text = f"هر یک دقیقه یکبار میتونی میو میو کنی\n{remaining} ثانیه دیگه دوباره امتحان کن"
 
         await update.message.reply_text(reply_text)
 
@@ -68,7 +91,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     init_db()
 
-    # توکن بات خودت رو اینجا بگذار (از BotFather گرفتی)
+    # توکن بات (اگر روی سرور رندر هستی از متغیر محیطی می‌خواند، یا می‌تونی موقتاً توکن خودت رو بذاری)
+    import os
     TOKEN = os.environ.get("BOT_TOKEN")
 
     app = ApplicationBuilder().token(TOKEN).build()
@@ -77,7 +101,7 @@ def main():
         MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message)
     )
 
-    print("بات با موفقیت روشن شد و داره گوش میده...")
+    print("بات با موفقیت روشن شد و سیستم کول‌دان فعال است...")
     app.run_polling()
 
 if __name__ == "__main__":
