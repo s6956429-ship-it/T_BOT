@@ -7,6 +7,23 @@ from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filte
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
+# --- تنظیمات املاک و بیزینس‌ها (قابل توسعه در آینده) ---
+PROPERTIES_CONFIG = {
+    "supermarket": {
+        "name": "سوپرمارکت",
+        "command": "خرید سوپرمارکت",
+        "price": 200000,
+        "profit_per_sec": 0.5,  # ثانیه‌ای نیم دلار سود
+    },
+    # برای اضافه کردن ملک جدید در آینده، کافیه اینجا کپی کنی:
+    # "gas_station": {
+    #     "name": "پمپ بنزین",
+    #     "command": "خرید پمپ بنزین",
+    #     "price": 1000000,
+    #     "profit_per_sec": 2.0,
+    # }
+}
+
 # تابع اتصال امن به دیتابیس ابری
 def get_db_connection():
     try:
@@ -16,7 +33,7 @@ def get_db_connection():
         print(f"خطا در اتصال به دیتابیس: {e}")
         return None
 
-# ۱. راه‌اندازی و ساخت جدول (به همراه مهاجرت خودکار ستون‌های جدید)
+# ۱. راه‌اندازی و ساخت جدول
 def init_db():
     if not DATABASE_URL:
         print("خطا: متغیر محیطی DATABASE_URL تنظیم نشده است!")
@@ -36,28 +53,15 @@ def init_db():
             last_action_time DOUBLE PRECISION DEFAULT 0,
             spouse_id BIGINT DEFAULT NULL,
             last_sex_time DOUBLE PRECISION DEFAULT 0,
-            inventory TEXT DEFAULT ''
+            inventory TEXT DEFAULT '',
+            business_balance DOUBLE PRECISION DEFAULT 0,
+            last_kiss_time DOUBLE PRECISION DEFAULT 0,
+            last_kiss2_time DOUBLE PRECISION DEFAULT 0,
+            last_kiss3_time DOUBLE PRECISION DEFAULT 0
         )
     """
     )
     
-    # --- تنظیمات املاک و بیزینس‌ها (از اینجا می‌تونی در آینده املاک جدید اضافه کنی) ---
-PROPERTIES_CONFIG = {
-    "supermarket": {
-        "name": "سوپرمارکت",
-        "command": "خرید سوپرمارکت",
-        "price": 200000,
-        "profit_per_sec": 0.5, # ثانیه‌ای نیم دلار سود
-    },
-    # در آینده برای اضافه کردن ملک جدید، کافیه کپی کنی و اسم و مقادیرش رو عوض کنی:
-    # "gas_station": {
-    #     "name": "پمپ بنزین",
-    #     "command": "خرید پمپ بنزین",
-    #     "price": 1000000,
-    #     "profit_per_sec": 2.0,
-    # }
-}
-    # جدول ثبت املاک خریداری شده با قابلیت داشتن تعداد (تا ۹ عدد)
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS user_properties (
@@ -70,117 +74,17 @@ PROPERTIES_CONFIG = {
         )
     """
     )
-    # اگر جدول از قبل بود ولی ستون quantity رو نداشت، اضافه‌اش کن:
-    try:
-        cursor.execute("ALTER TABLE user_properties ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1;")
-    except Exception:
-        pass
-
-        
-        # --- بخش پنجم: سیستم خرید املاک و بیزینس (با قابلیت خرید چندتایی تا ۹ عدد) ---
-    matched_property = None
-    for prop_id, prop_data in PROPERTIES_CONFIG.items():
-        if text == prop_data["command"]:
-            matched_property = (prop_id, prop_data)
-            break
-
-    if matched_property:
-        prop_id, prop_data = matched_property
-        conn = get_db_connection()
-        if not conn:
-            await update.message.reply_text("خطا در اتصال به دیتابیس!")
-            return
-        cursor = conn.cursor()
-        
-        ensure_user(cursor, user_id, username)
-        
-        # چک کردن تعداد فعلی که کاربر از این ملک داره
-        cursor.execute("SELECT quantity FROM user_properties WHERE user_id = %s AND property_id = %s", (user_id, prop_id))
-        row = cursor.fetchone()
-        current_qty = row[0] if row else 0
-        
-        # بررسی سقف ۹ عددی
-        if current_qty >= 9:
-            await update.message.reply_text(f"شما حداکثر می‌تونی ۹ تا {prop_data['name']} داشته باشی و به سقف مجاز رسیدی! 🚫")
-            cursor.close()
-            conn.close()
-            return
-            
-        # چک کردن موجودی اصلی کاربر
-        cursor.execute("SELECT score FROM users WHERE user_id = %s", (user_id,))
-        user_score = cursor.fetchone()[0]
-        
-        if user_score < prop_data["price"]:
-            await update.message.reply_text(f"موجودی حسابت کافی نیست! برای خرید یک {prop_data['name']} به {prop_data['price']} دلار نیاز داری. ❌", parse_mode="Markdown")
-            cursor.close()
-            conn.close()
-            return
-            
-        # کسر قیمت ملک از موجودی و ثبت/آپدیت تعداد در دیتابیس
-        current_time = time.time()
-        new_score = user_score - prop_data["price"]
-        
-        cursor.execute("UPDATE users SET score = %s WHERE user_id = %s", (new_score, user_id))
-        
-        if current_qty == 0:
-            # اگر اولین بار بود می‌خرید
-            cursor.execute(
-                "INSERT INTO user_properties (user_id, property_id, quantity, purchase_time, last_collect_time) VALUES (%s, %s, 1, %s, %s)",
-                (user_id, prop_id, current_time, current_time)
-            )
-            new_qty = 1
-        else:
-            # اگر از قبل داشت، یکی به تعدادش اضافه کن
-            new_qty = current_qty + 1
-            cursor.execute(
-                "UPDATE user_properties SET quantity = %s WHERE user_id = %s AND property_id = %s",
-                (new_qty, user_id, prop_id)
-            )
-            
-        conn.commit()
-        cursor.close()
-        conn.close()
-        
-        total_profit_per_sec = prop_data["profit_per_sec"] * new_qty
-        await update.message.reply_text(
-            f"🎉 مبارکه!\n{user.first_name} عزیز، یک {prop_data['name']} دیگر خریدی!\n\n"
-            f"📊 تعداد کل این ملک: {new_qty} از ۹\n"
-            f"📈 سود جدید این بیزینس: ثانیه‌ای {total_profit_per_sec} دلار 🏪", 
-            parse_mode="Markdown"
-        )
-        return
-        
     
-    # سیستم مهاجرت هوشمند برای اضافه کردن ستون‌های جدید بدون پاک شدن داده‌ها
-    cursor.execute("PRAGMA table_info(users);" if "sqlite" in DATABASE_URL else """
-        SELECT column_name FROM information_schema.columns WHERE table_name='users';
-    """)
-    # برای اطمینان از وجود ستون‌های جدید بوس، با ALTER TABLE اضافه می‌کنیم اگر نبودند
-    columns_to_add = [
-        ("last_kiss_time", "DOUBLE PRECISION DEFAULT 0"),
-        ("last_kiss2_time", "DOUBLE PRECISION DEFAULT 0"),
-        ("last_kiss3_time", "DOUBLE PRECISION DEFAULT 0")
-    ]
-    
-    existing_cols = [row[0] for row in cursor.fetchall()] if "information_schema" in str(cursor.description or "") else []
-    
-    # روش امن‌تر برای اضافه کردن ستون‌ها در PostgreSQL
-    for col_name, col_type in columns_to_add:
-        try:
-            cursor.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col_name} {col_type};")
-        except Exception:
-            pass # اگر ستون از قبل بود رد شو
-
     conn.commit()
     cursor.close()
     conn.close()
-    print("اتصال به دیتابیس ابری و به‌روزرسانی جدول با موفقیت انجام شد!")
+    print("اتصال به دیتابیس ابری و ساخت جدول‌ها با موفقیت انجام شد!")
 
 def ensure_user(cursor, user_id, username):
     cursor.execute("SELECT user_id FROM users WHERE user_id = %s", (user_id,))
     if not cursor.fetchone():
         cursor.execute(
-            "INSERT INTO users (user_id, username, score, last_action_time, spouse_id, last_sex_time, inventory) VALUES (%s, %s, 0, 0, NULL, 0, '')",
+            "INSERT INTO users (user_id, username, score, last_action_time, spouse_id, last_sex_time, inventory, business_balance) VALUES (%s, %s, 0, 0, NULL, 0, '', 0)",
             (user_id, username)
         )
 
@@ -225,7 +129,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = user.id
     username = user.username or user.first_name or "Unknown"
 
-        # --- تابع کمکی برای مدیریت مستقل دستورات تعاملی (مثل کیس، بغل و غیره) ---
+    # --- تابع کمکی برای مدیریت مستقل دستورات تعاملی (کیس، بغل و غیره) ---
     async def handle_custom_interaction(action_title, time_column_name, reward_amount, message_template):
         if not update.message.reply_to_message:
             await update.message.reply_text(f"برای انجام «{action_title}» باید روی پیام طرف مقابل ریپلای کنی! 🫂")
@@ -252,13 +156,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ensure_user(cursor, user_id, username)
         ensure_user(cursor, target_id, target_name)
         
-        # چک کردن زمان آخرین استفاده از این دستور خاص
         cursor.execute(f"SELECT score, {time_column_name} FROM users WHERE user_id = %s", (user_id,))
         user_res = cursor.fetchone()
         user_score, last_time = user_res if user_res else (0, 0)
         
         current_time = time.time()
-        cooldown = 3600  # ۱ ساعت به ثانیه
+        cooldown = 3600
         time_diff = current_time - last_time
         
         if time_diff < cooldown:
@@ -268,12 +171,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             conn.close()
             return
             
-        # گرفتن امتیاز هدف
         cursor.execute("SELECT score FROM users WHERE user_id = %s", (target_id,))
         target_res = cursor.fetchone()
         target_score = target_res[0] if target_res else 0
         
-        # اضافه کردن پاداش به هر دو نفر و آپدیت زمان
         new_user_score = user_score + reward_amount
         new_target_score = target_score + reward_amount
         
@@ -286,40 +187,90 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_display = f"@{user.username}" if user.username else user.first_name
         target_display = f"@{target_user.username}" if target_user.username else target_user.first_name
         
-        # ساخت متن نهایی با قالب دلخواه شما
         final_message = message_template.replace("{user}", user_display).replace("{target}", target_display).replace("{reward}", str(reward_amount))
         await update.message.reply_text(final_message)
 
-    # --- ۱. دستور کیس (بوس) ---
+    # --- دستور کیس (بوس) ---
     if re.match(r"^(کیس|بوس)\b", text):
-        await handle_custom_interaction(
-            action_title="کیس",
-            time_column_name="last_kiss_time",
-            reward_amount=300,
-            message_template="{user} لبای {target} رو بوسید و نفری {reward} دلار گرفتن. 😘🔥"
-        )
+        await handle_custom_interaction("کیس", "last_kiss_time", 300, "{user} لبای {target} رو بوسید و نفری {reward} دلار گرفتن. 😘🔥")
         return
 
-    # --- ۲. دستور بغل (بوس۲ سابق) ---
+    # --- دستور بغل ---
     if re.match(r"^گی\b", text):
-        await handle_custom_interaction(
-            action_title="گی",
-            time_column_name="last_kiss2_time",
-            reward_amount=500,
-            message_template="{user} کون {target} گذاشت و آبشو ریخت توش و نفری {reward} دلار گرفتن. 🍑💦"
-        )
+        await handle_custom_interaction("گی", "last_kiss2_time", 500, "{user} کون {target} گذاشت و آبشو ریخت توش و نفری {reward} دلار گرفتن. 🍑💦"
         return
 
-    # --- ۳. دستور بوس۳ (می‌تونی اسم و متن دلخواهت رو اینجا بذاری) ---
+    # --- دستور بوس۳ ---
     if re.match(r"^لز\b", text):
-        await handle_custom_interaction(
-            action_title="لز",
-            time_column_name="last_kiss3_time",
-            reward_amount=500,
-            message_template="{user} و {target} قیچی کردن و نفری {reward} دلار گرفتن. 🐳"
-        )
+        await handle_custom_interaction("لز", "last_kiss3_time", 500, "{user} و {target} قیچی کردن و نفری {reward} دلار گرفتن. 🐳"
         return
 
+    # --- سیستم خرید املاک و بیزینس ---
+    matched_property = None
+    for prop_id, prop_data in PROPERTIES_CONFIG.items():
+        if text == prop_data["command"].lower():
+            matched_property = (prop_id, prop_data)
+            break
+
+    if matched_property:
+        prop_id, prop_data = matched_property
+        conn = get_db_connection()
+        if not conn:
+            await update.message.reply_text("خطا در اتصال به دیتابیس!")
+            return
+        cursor = conn.cursor()
+        
+        ensure_user(cursor, user_id, username)
+        
+        cursor.execute("SELECT quantity FROM user_properties WHERE user_id = %s AND property_id = %s", (user_id, prop_id))
+        row = cursor.fetchone()
+        current_qty = row[0] if row else 0
+        
+        if current_qty >= 9:
+            await update.message.reply_text(f"شما حداکثر می‌تونی ۹ تا {prop_data['name']} داشته باشی و به سقف مجاز رسیدی! 🚫")
+            cursor.close()
+            conn.close()
+            return
+            
+        cursor.execute("SELECT score FROM users WHERE user_id = %s", (user_id,))
+        user_score = cursor.fetchone()[0]
+        
+        if user_score < prop_data["price"]:
+            await update.message.reply_text(f"موجودی حسابت کافی نیست! برای خرید یک {prop_data['name']} به **{prop_data['price']} دلار** نیاز داری. ❌", parse_mode="Markdown")
+            cursor.close()
+            conn.close()
+            return
+            
+        current_time = time.time()
+        new_score = user_score - prop_data["price"]
+        
+        cursor.execute("UPDATE users SET score = %s WHERE user_id = %s", (new_score, user_id))
+        
+        if current_qty == 0:
+            cursor.execute(
+                "INSERT INTO user_properties (user_id, property_id, quantity, purchase_time, last_collect_time) VALUES (%s, %s, 1, %s, %s)",
+                (user_id, prop_id, current_time, current_time)
+            )
+            new_qty = 1
+        else:
+            new_qty = current_qty + 1
+            cursor.execute(
+                "UPDATE user_properties SET quantity = %s WHERE user_id = %s AND property_id = %s",
+                (new_qty, user_id, prop_id)
+            )
+            
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        total_profit_per_sec = prop_data["profit_per_sec"] * new_qty
+        await update.message.reply_text(
+            f"🎉 مبارکه!\n{user.first_name} عزیز، یک **{prop_data['name']}** دیگر خریدی!\n\n"
+            f"📊 تعداد کل این ملک: **{new_qty} از ۹**\n"
+            f"📈 سود جدید این بیزینس: ثانیه‌ای **{total_profit_per_sec} دلار** 🏪", 
+            parse_mode="Markdown"
+        )
+        return
 
     # --- موجودی ---
     if re.match(r"^موجودی\b", text):
@@ -519,7 +470,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"طلاق صادر شد! 💔\n۲۰۰ دلار بابت مهریه از حسابت کم شد.\nموجودی جدید: {new_score} امتیاز")
         return
 
-    # --- رابطه (مخصوص متاهل‌ها) ---
+    # --- رابطه ---
     if re.match(r"^(سکس|رابطه)\b", text):
         conn = get_db_connection()
         if not conn:
@@ -553,8 +504,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         spouse_score = spouse_data[0] if spouse_data else 0
         spouse_name = spouse_data[1] if spouse_data else "همسر"
         
-        new_user_score = score + 1000
-        new_spouse_score = spouse_score + 1000
+        new_user_score = score + 100
+        new_spouse_score = spouse_score + 100
         
         cursor.execute("UPDATE users SET score = %s, last_sex_time = %s WHERE user_id = %s", (new_user_score, current_time, user_id))
         cursor.execute("UPDATE users SET score = %s, last_sex_time = %s WHERE user_id = %s", (new_spouse_score, current_time, spouse_id))
@@ -593,7 +544,7 @@ def main():
         MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message)
     )
 
-    print("بات پیشرفته با قابلیت بوس و دستورات سفارشی روشن شد...")
+    print("بات نهایی با املاک و دستورات کامل روشن شد...")
     app.run_polling()
 
 if __name__ == "__main__":
