@@ -202,7 +202,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # --- دستور بوس۳ ---
     if re.match(r"^لز\b", text):
-        await handle_custom_interaction("لز", "last_kiss3_time", 500, "{user} و {target} قیچی کردن و نفری {reward} دلار گرفتن. 🐩����
+        await handle_custom_interaction("لز", "last_kiss3_time", 500, "{user} و {target} قیچی کردن و نفری {reward} دلار گرفتن. 🐳")
         return
 
     # --- سیستم خرید املاک و بیزینس ---
