@@ -197,12 +197,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # --- دستور بغل ---
     if re.match(r"^گی\b", text):
-        await handle_custom_interaction("گی", "last_kiss2_time", 500, "{user} کون {target} گذاشت و آبشو ریخت توش و نفری {reward} دلار گرفتن. 🍑💦"
+        await handle_custom_interaction("گی", "last_kiss2_time", 500, "{user} کون {target} گذاشت و آبشو ریخت توش و نفری {reward} دلار گرفتن. 🍑💦")
         return
 
     # --- دستور بوس۳ ---
     if re.match(r"^لز\b", text):
-        await handle_custom_interaction("لز", "last_kiss3_time", 500, "{user} و {target} قیچی کردن و نفری {reward} دلار گرفتن. 🐳"
+        await handle_custom_interaction("لز", "last_kiss3_time", 500, "{user} و {target} قیچی کردن و نفری {reward} دلار گرفتن. 🐩����
         return
 
     # --- سیستم خرید املاک و بیزینس ---
