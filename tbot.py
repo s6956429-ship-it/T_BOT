@@ -655,7 +655,6 @@ def main():
     init_db()
 
     TOKEN = os.environ.get("BOT_TOKEN")
-    
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
     app.add_handler(CallbackQueryHandler(handle_callback))  # <--- این خط رو اضافه کن
 
