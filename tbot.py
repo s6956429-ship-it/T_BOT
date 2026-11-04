@@ -3,7 +3,7 @@ import os
 import re
 import psycopg2
 from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
+from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CallbackQueryHandler, filters
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
@@ -272,6 +272,77 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # --- دستور املاک (مشاهده دارایی‌ها و سود جمع شده) ---
+    if re.match(r"^املاک\b", text):
+        conn = get_db_connection()
+        if not conn:
+            await update.message.reply_text("خطا در اتصال به دیتابیس!")
+            return
+        cursor = conn.cursor()
+        
+        ensure_user(cursor, user_id, username)
+        
+        # ۱. محاسبه سود لحظه‌ای تمام املاک کاربر و اضافه کردن به business_balance
+        cursor.execute("SELECT property_id, quantity, last_collect_time FROM user_properties WHERE user_id = %s", (user_id,))
+        properties = cursor.fetchall()
+        
+        current_time = time.time()
+        total_pending_profit = 0
+        
+        for prop_id, qty, last_collect in properties:
+            if prop_id in PROPERTIES_CONFIG:
+                prop_data = PROPERTIES_CONFIG[prop_id]
+                # محاسبه سود بر اساس زمان گذشته (تعداد * سود ثانیه‌ای * ثانیه‌های سپری شده)
+                time_diff = current_time - last_collect
+                profit = time_diff * prop_data["profit_per_sec"] * qty
+                total_pending_profit += profit
+                
+                # آپدیت زمان آخرین محاسبه در دیتابیس
+                cursor.execute(
+                    "UPDATE user_properties SET last_collect_time = %s WHERE user_id = %s AND property_id = %s",
+                    (current_time, user_id, prop_id)
+                )
+        
+        # اگر سودی جمع شده بود، به موجودی کیف پول بیزینس اضافه کن
+        if total_pending_profit > 0:
+            cursor.execute(
+                "UPDATE users SET business_balance = business_balance + %s WHERE user_id = %s",
+                (total_pending_profit, user_id)
+            )
+            conn.commit()
+
+        # ۲. خواندن اطلاعات نهایی از دیتابیس برای نمایش به کاربر
+        cursor.execute("SELECT business_balance FROM users WHERE user_id = %s", (user_id,))
+        business_balance = cursor.fetchone()[0]
+        
+        # ساخت لیست املاک کاربر
+        property_list_text = ""
+        for prop_id, qty, _ in properties:
+            if prop_id in PROPERTIES_CONFIG:
+                prop_data = PROPERTIES_CONFIG[prop_id]
+                property_list_text += f"▪️ {prop_data['name']} : **{qty} عدد**\n"
+                
+        cursor.close()
+        conn.close()
+        
+        if not properties:
+            property_list_text = "هنوز هیچ ملکی نخریدی! با دستورهایی مثل «خرید سوپرمارکت» شروع کن. 🏪\n"
+
+        response_msg = (
+            f"🏢 **املاک و مستغلات شما:**\n\n"
+            f"{property_list_text}\n"
+            f"💰 **سود جمع‌شده در کیف بیزینس:** {int(business_balance)} دلار\n\n"
+            f"برای انتقال این سود به حساب اصلی، روی دکمه زیر بزنید 👇"
+        )
+        
+        # ساخت دکمه شیشه‌ای برای برداشت سود
+        keyboard = [[InlineKeyboardButton("💵 برداشت سود به حساب اصلی", callback_data="collect_profit")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(response_msg, reply_markup=reply_markup, parse_mode="Markdown")
+        return
+
+
     # --- موجودی ---
     if re.match(r"^موجودی\b", text):
         conn = get_db_connection()
@@ -323,6 +394,53 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
         await update.message.reply_text(leaderboard_text, parse_mode="Markdown")
         return
+
+# --- تابع مدیریت کلیک روی دکمه شیشه‌ای (برداشت سود) ---
+async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    
+    if query.data == "collect_profit":
+        conn = get_db_connection()
+        if not conn:
+            await query.edit_message_text("خطا در اتصال به دیتابیس!")
+            return
+        cursor = conn.cursor()
+        
+        # خواندن موجودی کیف بیزینس
+        cursor.execute("SELECT business_balance FROM users WHERE user_id = %s", (user_id,))
+        row = cursor.fetchone()
+        business_balance = row[0] if row else 0
+        
+        if business_balance <= 0:
+            await query.edit_message_text("سود انباشته‌ای برای برداشت نداری! اول بذار املاکت کار کنن 😅")
+            cursor.close()
+            conn.close()
+            return
+            
+        # انتقال سود به حساب اصلی و صفر کردن کیف بیزینس
+        cursor.execute(
+            "UPDATE users SET score = score + %s, business_balance = 0 WHERE user_id = %s",
+            (business_balance, user_id)
+        )
+        conn.commit()
+        
+        cursor.execute("SELECT score FROM users WHERE user_id = %s", (user_id,))
+        new_main_score = cursor.fetchone()[0]
+        
+        cursor.close()
+        conn.close()
+        
+        await query.edit_message_text(
+            f"✅ برداشت موفق!\n\n"
+            f"مبلغ **{int(business_balance)} دلار** سود بیزینس به حساب اصلی شما واریز شد.\n"
+            f"💰 موجودی جدید حساب اصلی: **{new_main_score} دلار**",
+            parse_mode="Markdown"
+        )
+
+
 
     # --- انتقال وجه ---
     transfer_match = re.match(r"^انتقال\s+(\d+)", text)
@@ -537,6 +655,10 @@ def main():
     init_db()
 
     TOKEN = os.environ.get("BOT_TOKEN")
+    
+    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
+    app.add_handler(CallbackQueryHandler(handle_callback))  # <--- این خط رو اضافه کن
+
 
     app = ApplicationBuilder().token(TOKEN).build()
 
