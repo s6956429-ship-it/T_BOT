@@ -59,7 +59,7 @@ PROPERTIES_CONFIG = {
 }
 # جدول ثبت املاک خریداری شده با قابلیت داشتن تعداد (تا ۹ عدد)
     cursor.execute(
-        ""
+        """
         CREATE TABLE IF NOT EXISTS user_properties (
             user_id BIGINT,
             property_id TEXT,
@@ -68,7 +68,7 @@ PROPERTIES_CONFIG = {
             last_collect_time DOUBLE PRECISION,
             PRIMARY KEY (user_id, property_id)
         )
-    ""
+    """
     )
     # اگر جدول از قبل بود ولی ستون quantity رو نداشت، اضافه‌اش کن:
     try:
