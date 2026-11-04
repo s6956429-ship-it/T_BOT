@@ -94,6 +94,122 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = user.id
     username = user.username or user.first_name or "Unknown"
 
+    # --- بخش جدید: موجودی ---
+    if re.match(r"^موجودی\b", text):
+        conn = get_db_connection()
+        if not conn:
+            await update.message.reply_text("خطا در اتصال به دیتابیس!")
+            return
+        cursor = conn.cursor()
+        ensure_user(cursor, user_id, username)
+        
+        cursor.execute("SELECT score, spouse_id FROM users WHERE user_id = %s", (user_id,))
+        score, spouse_id = cursor.fetchone()
+        
+        spouse_text = "مجرد 🥲"
+        if spouse_id:
+            cursor.execute("SELECT username FROM users WHERE user_id = %s", (spouse_id,))
+            spouse_res = cursor.fetchone()
+            if spouse_res:
+                spouse_text = f"متاهل با @{spouse_res[0]}" if not spouse_res[0].startswith("http") else f"متاهل"
+
+        cursor.close()
+        conn.close()
+        
+        await update.message.reply_text(f"💳 کارت بانکی شما:\n\n💰 موجودی: {score} دلار\n💍 وضعیت تأهل: {spouse_text}")
+        return
+
+    # --- بخش جدید: رده‌بندی (یا /top) ---
+    if re.match(r"^(رده‌بندی|رده بندی|top)\b", text):
+        conn = get_db_connection()
+        if not conn:
+            await update.message.reply_text("خطا در اتصال به دیتابیس!")
+            return
+        cursor = conn.cursor()
+        
+        # گرفتن ۱۰ نفر اول بر اساس بیشترین امتیاز
+        cursor.execute("SELECT username, score FROM users ORDER BY score DESC LIMIT 10")
+        top_users = cursor.fetchall()
+        
+        cursor.close()
+        conn.close()
+        
+        if not top_users:
+            await update.message.reply_text("هنوز هیچ‌کسی امتیازی ثبت نکرده!")
+            return
+            
+        leaderboard_text = "🏆 **۱۰ نفر برتر گروه (ثروتمندان):**\n\n"
+        for index, (uname, uscore) in enumerate(top_users, start=1):
+            display_name = f"@{uname}" if uname and not uname.startswith("http") else "کارگر بی‌نام"
+            medal = "🥇" if index == 1 else "🥈" if index == 2 else "🥉" if index == 3 else f"{index}."
+            leaderboard_text += f"{medal} {display_name} ➔ **{uscore} دلار**\n"
+            
+        await update.message.reply_text(leaderboard_text, parse_mode="Markdown")
+        return
+
+    # --- بخش جدید: انتقال وجه (انتقال x) ---
+    transfer_match = re.match(r"^انتقال\s+(\d+)", text)
+    if transfer_match:
+        amount = int(transfer_match.group(1))
+        
+        if amount <= 0:
+            await update.message.reply_text("مبلغ انتقال باید بیشتر از صفر باشه! 🤨")
+            return
+            
+        if not update.message.reply_to_message:
+            await update.message.reply_text("برای انتقال وجه باید روی پیام شخصی که می‌خوای بهش پول بفرستی ریپلای کنی! 💸")
+            return
+            
+        target_user = update.message.reply_to_message.from_user
+        target_id = target_user.id
+        target_name = target_user.username or target_user.first_name or "Unknown"
+        
+        if user_id == target_id:
+            await update.message.reply_text("نمی‌تونی به خودت پول انتقال بدی عاقل! 😅")
+            return
+            
+        if target_user.is_bot:
+            await update.message.reply_text("با بات‌ها معامله مالی نکن، پولت رو می‌خورن! 🤖")
+            return
+            
+        conn = get_db_connection()
+        if not conn:
+            await update.message.reply_text("خطا در اتصال به دیتابیس!")
+            return
+        cursor = conn.cursor()
+        
+        ensure_user(cursor, user_id, username)
+        ensure_user(cursor, target_id, target_name)
+        
+        # بررسی موجودی فرستنده
+        cursor.execute("SELECT score FROM users WHERE user_id = %s", (user_id,))
+        sender_score = cursor.fetchone()[0]
+        
+        if sender_score < amount:
+            await update.message.reply_text(f"موجودی حسابت کافی نیست! موجودی فعلی شما: {sender_score} دلار ❌")
+            cursor.close()
+            conn.close()
+            return
+            
+        # کسر از فرستنده و اضافه کردن به گیرنده
+        cursor.execute("UPDATE users SET score = score - %s WHERE user_id = %s", (amount, user_id))
+        cursor.execute("UPDATE users SET score = score + %s WHERE user_id = %s", (amount, target_id))
+        
+        conn.commit()
+        
+        # گرفتن موجودی جدید فرستنده برای نمایش
+        cursor.execute("SELECT score FROM users WHERE user_id = %s", (user_id,))
+        new_sender_score = cursor.fetchone()[0]
+        
+        cursor.close()
+        conn.close()
+        
+        target_display = f"@{target_user.username}" if target_user.username else target_user.first_name
+        sender_display = f"@{user.username}" if user.username else user.first_name
+        
+        await update.message.reply_text(f"💳 انتقال موفق!\n\nمبلغ **{amount} دلار** از {sender_display} به {target_display} منتقل شد.\nموجودی جدید شما: {new_sender_score} دلار", parse_mode="Markdown")
+        return
+
     # --- بخش اول: ازدواج ---
     if re.match(r"^ازدواج\b", text):
         if not update.message.reply_to_message:
@@ -114,7 +230,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         conn = get_db_connection()
         if not conn:
-            await update.message.reply_text("خطا در اتصال به دیتابیس! لطفاً بعداً امتحان کنید.")
             return
         cursor = conn.cursor()
         
@@ -255,7 +370,7 @@ def main():
         MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message)
     )
 
-    print("بات با دیتابیس ابری Supabase و مدیریت خطای اتصال روشن شد...")
+    print("بات پیشرفته با قابلیت موجودی، رده‌بندی و انتقال وجه روشن شد...")
     app.run_polling()
 
 if __name__ == "__main__":
