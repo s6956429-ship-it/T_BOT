@@ -5,19 +5,28 @@ import psycopg2
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 
-# گرفتن آدرس دیتابیس از متغیرهای محیطی
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
-# ۱. اتصال به دیتابیس ابری PostgreSQL (Supabase) و ساخت جدول
+# تابع اتصال امن به دیتابیس ابری
+def get_db_connection():
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        return conn
+    except Exception as e:
+        print(f"خطا در اتصال به دیتابیس: {e}")
+        return None
+
+# ۱. راه‌اندازی و ساخت جدول
 def init_db():
     if not DATABASE_URL:
         print("خطا: متغیر محیطی DATABASE_URL تنظیم نشده است!")
         return
         
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = get_db_connection()
+    if not conn:
+        return
+        
     cursor = conn.cursor()
-    
-    # ساخت جدول کاربران با سازگاری کامل با PostgreSQL
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS users (
@@ -36,7 +45,6 @@ def init_db():
     conn.close()
     print("اتصال به دیتابیس ابری با موفقیت برقرار شد!")
 
-# تابع کمکی برای اطمینان از وجود کاربر در دیتابیس
 def ensure_user(cursor, user_id, username):
     cursor.execute("SELECT user_id FROM users WHERE user_id = %s", (user_id,))
     if not cursor.fetchone():
@@ -45,21 +53,24 @@ def ensure_user(cursor, user_id, username):
             (user_id, username)
         )
 
-# تابع بررسی محدودیت زمانی (Cooldown) برای میو
 def check_and_update_score(user_id, username, points=10, cooldown=60):
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = get_db_connection()
+    if not conn:
+        return False, 0, 60
+        
     cursor = conn.cursor()
-    
     ensure_user(cursor, user_id, username)
     current_time = time.time()
 
     cursor.execute("SELECT score, last_action_time FROM users WHERE user_id = %s", (user_id,))
-    score, last_action_time = cursor.fetchone()
+    result = cursor.fetchone()
+    score, last_action_time = result if result else (0, 0)
 
     time_diff = current_time - last_action_time
 
     if time_diff < cooldown:
         remaining_time = int(cooldown - time_diff)
+        cursor.close()
         conn.close()
         return False, score, remaining_time
     else:
@@ -101,7 +112,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("با بات‌ها نمیشه ازدواج کرد، دل نبند! 🤖")
             return
 
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = get_db_connection()
+        if not conn:
+            await update.message.reply_text("خطا در اتصال به دیتابیس! لطفاً بعداً امتحان کنید.")
+            return
         cursor = conn.cursor()
         
         ensure_user(cursor, user_id, username)
@@ -135,7 +149,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # --- بخش دوم: طلاق ---
     if re.match(r"^طلاق\b", text):
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = get_db_connection()
+        if not conn:
+            return
         cursor = conn.cursor()
         
         ensure_user(cursor, user_id, username)
@@ -167,12 +183,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # --- بخش سوم: دستور سکس / رابطه ---
     if re.match(r"^(سکس|رابطه)\b", text):
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = get_db_connection()
+        if not conn:
+            return
         cursor = conn.cursor()
         
         ensure_user(cursor, user_id, username)
         cursor.execute("SELECT score, spouse_id, last_sex_time FROM users WHERE user_id = %s", (user_id,))
-        score, spouse_id, last_sex_time = cursor.fetchone()
+        result = cursor.fetchone()
+        score, spouse_id, last_sex_time = result if result else (0, None, 0)
         
         if spouse_id is None:
             await update.message.reply_text("تو مجردی اول باید ازدواج کنی! 🚫")
@@ -236,7 +255,7 @@ def main():
         MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message)
     )
 
-    print("بات با دیتابیس ابری Supabase با موفقیت روشن شد...")
+    print("بات با دیتابیس ابری Supabase و مدیریت خطای اتصال روشن شد...")
     app.run_polling()
 
 if __name__ == "__main__":
