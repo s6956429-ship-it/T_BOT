@@ -68,7 +68,7 @@ def main():
     init_db()
 
     # توکن بات خودت رو اینجا بگذار (از BotFather گرفتی)
-    TOKEN = "os.environ.get("BOT_TOKEN")"
+    TOKEN = os.environ.get("BOT_TOKEN")
 
     app = ApplicationBuilder().token(TOKEN).build()
 
