@@ -79,7 +79,7 @@ PROPERTIES_CONFIG = {
         # --- بخش پنجم: سیستم خرید املاک و بیزینس (با قابلیت خرید چندتایی تا ۹ عدد) ---
     matched_property = None
     for prop_id, prop_data in PROPERTIES_CONFIG.items():
-        if text == prop_data["command"].lower():
+        if text == prop_data["command"]:
             matched_property = (prop_id, prop_data)
             break
 
