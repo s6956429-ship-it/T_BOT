@@ -35,6 +35,7 @@ def get_db_connection():
         return None
 
 # ۱. راه‌اندازی و ساخت جدول
+# ۱. راه‌اندازی و ساخت جدول (به همراه اضافه کردن خودکار ستون‌های جدید)
 def init_db():
     if not DATABASE_URL:
         print("خطا: متغیر محیطی DATABASE_URL تنظیم نشده است!")
@@ -45,6 +46,8 @@ def init_db():
         return
         
     cursor = conn.cursor()
+    
+    # ساخت جدول اصلی کاربران (اگر اصلاً وجود نداشت)
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS users (
@@ -63,6 +66,7 @@ def init_db():
     """
     )
     
+    # ساخت جدول املاک (اگر وجود نداشت)
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS user_properties (
@@ -76,10 +80,26 @@ def init_db():
     """
     )
     
+    # --- بخش حیاتی: اضافه کردن خودکار ستون‌ها به جدول موجود (بدون از دست رفتن دیتا) ---
+    columns_to_check = [
+        ("business_balance", "DOUBLE PRECISION DEFAULT 0"),
+        ("last_kiss_time", "DOUBLE PRECISION DEFAULT 0"),
+        ("last_kiss2_time", "DOUBLE PRECISION DEFAULT 0"),
+        ("last_kiss3_time", "DOUBLE PRECISION DEFAULT 0"),
+        ("inventory", "TEXT DEFAULT ''")
+    ]
+    
+    for col_name, col_type in columns_to_check:
+        try:
+            cursor.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col_name} {col_type};")
+        except Exception as e:
+            pass # اگر ستون از قبل وجود داشت خطا رو نادیده بگیر
+            
     conn.commit()
     cursor.close()
     conn.close()
-    print("اتصال به دیتابیس ابری و ساخت جدول‌ها با موفقیت انجام شد!")
+    print("اتصال به دیتابیس ابری و بررسی ساختار جدول‌ها با موفقیت انجام شد!")
+
 
 def ensure_user(cursor, user_id, username):
     cursor.execute("SELECT user_id FROM users WHERE user_id = %s", (user_id,))
