@@ -544,10 +544,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     meow_pattern = r"^(میوو*|میاوو*|میو\s+میو)"
     
     if re.match(meow_pattern, text):
-        success, total_score, remaining = check_and_update_score(user_id, username, points=100000, cooldown=60)
+        success, total_score, remaining = check_and_update_score(user_id, username, points=20, cooldown=60)
 
         if success:
-            reply_text = f"۱۰ امتیاز گرفتی!\nجمع امتیازات: {total_score}"
+            reply_text = f"۲۰ امتیاز گرفتی!\nجمع امتیازات: {total_score}"
         else:
             reply_text = f"هر یک دقیقه یکبار میتونی میو میو کنی\n{remaining} ثانیه دیگه دوباره امتحان کن"
 
