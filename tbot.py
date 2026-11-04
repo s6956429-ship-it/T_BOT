@@ -534,22 +534,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(reply_text)
 
 # ۳. تابع اصلی اجرای بات
-# ۳. تابع اصلی اجرای بات
 def main():
     init_db()
 
     TOKEN = os.environ.get("BOT_TOKEN")
 
-    # ۱. اول باید شیء app اینجا ساخته بشه
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # ۲. بعد از ساخته شدن app، هندلرها رو بهش اضافه می‌کنیم
-    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
-    app.add_handler(CallbackQueryHandler(handle_callback))
+    app.add_handler(
+        MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message)
+    )
 
-    print("بات با دیتابیس ابری Supabase و قابلیت املاک روشن شد...")
+    print("بات نهایی با املاک و دستورات کامل روشن شد...")
     app.run_polling()
 
-if __name__ == "__main__":
+if name == "main":
     main()
-
