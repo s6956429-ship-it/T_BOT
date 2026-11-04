@@ -70,6 +70,11 @@ PROPERTIES_CONFIG = {
         )
     """
     )
+        # اضافه شدن کیف پول بیزینس به جدول کاربران (اگر وجود نداشت)
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS business_balance DOUBLE PRECISION DEFAULT 0;")
+    except Exception:
+        pass
     # اگر جدول از قبل بود ولی ستون quantity رو نداشت، اضافه‌اش کن:
     try:
         cursor.execute("ALTER TABLE user_properties ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1;")
