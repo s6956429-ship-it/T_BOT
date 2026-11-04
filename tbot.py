@@ -2,9 +2,8 @@ import time
 import os
 import re
 import psycopg2
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CallbackQueryHandler, filters
-
+from telegram import Update
+from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
@@ -548,5 +547,5 @@ def main():
     print("بات نهایی با املاک و دستورات کامل روشن شد...")
     app.run_polling()
 
-if name == "main":
+if __name__ == "__main__":
     main()
