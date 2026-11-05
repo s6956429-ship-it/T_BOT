@@ -704,7 +704,13 @@ def main():
     TOKEN = os.environ.get("BOT_TOKEN")
 
     # ۱. اول باید شیء app اینجا ساخته بشه
-    app = ApplicationBuilder().token(TOKEN).build()
+    app = ApplicationBuilder().token(TOKEN).post_init(post_init).build()
+    
+    async def post_init(app):
+    await app.bot.set_my_commands([
+        ("start", "شروع بازی 🐱"),
+        ("help", "راهنمای سرزمین میو 📖"),
+    ])
 
     # ۲. بعد از ساخته شدن app، هندلرها رو بهش اضافه می‌کنیم
     app.add_handler(CommandHandler("start", start))
