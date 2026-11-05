@@ -342,7 +342,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             medal = "🥇" if index == 1 else "🥈" if index == 2 else "🥉" if index == 3 else f"{index}."
             leaderboard_text += f"{medal} {display_name} ➔ **{uscore} دلار**\n"
             
-        await update.message.reply_text(leaderboard_text, parse_mode="Markdown")
+        await update.message.reply_text(leaderboard_text)
         return
 
     # --- انتقال وجه ---
