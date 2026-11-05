@@ -708,7 +708,7 @@ def main():
 
     # ۲. بعد از ساخته شدن app، هندلرها رو بهش اضافه می‌کنیم
     app.add_handler(CommandHandler("start", start))
-	app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("help", help_command))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
     app.add_handler(CallbackQueryHandler(handle_callback))
 
