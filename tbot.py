@@ -694,7 +694,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-
+async def post_init(app):
+    await app.bot.set_my_commands([
+        ("start", "شروع بازی 🐱"),
+        ("help", "راهنمای سرزمین میو 📖"),
+    ])
 
 # ۳. تابع اصلی اجرای بات
 # ۳. تابع اصلی اجرای بات
@@ -705,9 +709,6 @@ def main():
 
     # ۱. اول باید شیء app اینجا ساخته بشه
     app = ApplicationBuilder().token(TOKEN).post_init(post_init).build()
-    
-    async def post_init(app):
-    	await app.bot.set_my_commands([("start", "شروع بازی 🐱"),("help", "راهنمای سرزمین میو 📖"),])
 
     # ۲. بعد از ساخته شدن app، هندلرها رو بهش اضافه می‌کنیم
     app.add_handler(CommandHandler("start", start))
