@@ -3,7 +3,7 @@ import os
 import re
 import psycopg2
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CallbackQueryHandler, filters
+from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CallbackQueryHandler, filters, CommandHandler
 
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
@@ -139,6 +139,26 @@ def check_and_update_score(user_id, username, points=10, cooldown=60):
         cursor.close()
         conn.close()
         return True, new_score, 0
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "سلام! 🐱\n"
+        "به سرزمین میویی خوش اومدی!\n\n"
+        "برای دیدن لیست دستورات و راهنمای بازی، بنویس: راهنما"
+    )
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    help_text = (
+        "📖 راهنمای سرزمین میو 🐱\n\n"
+        "💰 موجودی: مشاهده پول و وضعیت تأهل\n"
+        "🏆 رده‌بندی: مشاهده ثروتمندترین کاربران\n\n"
+        "دستورات بیشتری به‌زودی اضافه می‌شوند!"
+    )
+
+    await update.message.reply_text(help_text)
+
+
 
 # ۲. مدیریت جامع پیام‌ها
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -687,6 +707,8 @@ def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
     # ۲. بعد از ساخته شدن app، هندلرها رو بهش اضافه می‌کنیم
+    app.add_handler(CommandHandler("start", start))
+	app.add_handler(CommandHandler("help", help_command))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
     app.add_handler(CallbackQueryHandler(handle_callback))
 
