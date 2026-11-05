@@ -170,9 +170,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
   اگر ازدواج کرده باشی، هر یک ساعت تو و همسرت نفری ۱۰۰۰ دلار دریافت می‌کنین.
 - `بوس` / `کیس`
   روی پیام هر کسی ریپلای کن؛ هر یک ساعت، هر دو نفر ۳۰۰ دلار دریافت می‌کنین.
-- 'گی'
+- `گی`
   روی پیام هر کسی ریپلای کن؛ هر یک ساعت، هر دو نفر ۵۰۰ دلار دریافت می‌کنین.
-- 'لز'
+- `لز`
   روی پیام هر کسی ریپلای کن؛ هر یک ساعت، هر دو نفر ۵۰۰ دلار دریافت می‌کنین.
   
 💸 **انتقال پول**
@@ -195,7 +195,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ✨ **موفق باشی و از زندگی در سرزمین میو لذت ببر!
 """
 
-    await update.message.reply_text(help_text)
+    await update.message.reply_text(help_text, parse_mode="MarkdownV2")
 
 
 
