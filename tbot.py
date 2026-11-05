@@ -195,7 +195,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ✨ **موفق باشی و از زندگی در سرزمین میو لذت ببر!
 """
 
-    await update.message.reply_text(help_text, parse_mode="MarkdownV2")
+    await update.message.reply_text(help_text, parse_mode="Markdown")
 
 
 
